@@ -45,7 +45,6 @@
 #include <media/cec-notifier.h>
 
 #include "g4x_hdmi.h"
-#include "i915_utils.h"
 #include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
@@ -55,7 +54,9 @@
 #include "intel_display_driver.h"
 #include "intel_display_regs.h"
 #include "intel_display_types.h"
+#include "intel_display_utils.h"
 #include "intel_dp.h"
+#include "intel_dpll.h"
 #include "intel_gmbus.h"
 #include "intel_hdcp.h"
 #include "intel_hdcp_regs.h"
@@ -67,6 +68,18 @@
 #include "intel_pfit.h"
 #include "intel_snps_phy.h"
 #include "intel_vrr.h"
+
+bool intel_hdmi_is_frl(u32 clock)
+{
+	u32 rates[] = { 300000, 600000, 800000, 1000000, 1200000 };
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(rates); i++)
+		if (intel_dpll_clock_matches(clock, rates[i]))
+			return true;
+
+	return false;
+}
 
 static void
 assert_hdmi_port_disabled(struct intel_hdmi *intel_hdmi)
@@ -1584,8 +1597,8 @@ bool intel_hdmi_hdcp_check_link_once(struct intel_digital_port *dig_port,
 	intel_de_write(display, HDCP_RPRIME(display, cpu_transcoder, port), ri.reg);
 
 	/* Wait for Ri prime match */
-	ret = intel_de_wait_for_set(display, HDCP_STATUS(display, cpu_transcoder, port),
-				    HDCP_STATUS_RI_MATCH | HDCP_STATUS_ENC, 1);
+	ret = intel_de_wait_for_set_ms(display, HDCP_STATUS(display, cpu_transcoder, port),
+				       HDCP_STATUS_RI_MATCH | HDCP_STATUS_ENC, 1);
 	if (ret) {
 		drm_dbg_kms(display->drm, "Ri' mismatch detected (%x)\n",
 			    intel_de_read(display, HDCP_STATUS(display, cpu_transcoder,
@@ -2504,7 +2517,7 @@ intel_hdmi_set_edid(struct drm_connector *_connector)
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct i2c_adapter *ddc = connector->base.ddc;
-	intel_wakeref_t wakeref;
+	struct ref_tracker *wakeref;
 	const struct drm_edid *drm_edid;
 	bool connected = false;
 
@@ -2547,7 +2560,7 @@ intel_hdmi_detect(struct drm_connector *_connector, bool force)
 	enum drm_connector_status status = connector_status_disconnected;
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct intel_encoder *encoder = &hdmi_to_dig_port(intel_hdmi)->base;
-	intel_wakeref_t wakeref;
+	struct ref_tracker *wakeref;
 
 	drm_dbg_kms(display->drm, "[CONNECTOR:%d:%s]\n",
 		    connector->base.base.id, connector->base.name);

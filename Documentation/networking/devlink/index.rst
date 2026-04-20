@@ -68,6 +68,7 @@ general.
    devlink-resource
    devlink-selftests
    devlink-trap
+   devlink-shared
 
 Driver-specific documentation
 -----------------------------
@@ -99,5 +100,6 @@ parameters, info versions, and other features it supports.
    prestera
    qed
    sfc
+   stmmac
    ti-cpsw-switch
    zl3073x

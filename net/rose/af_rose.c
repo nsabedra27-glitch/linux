@@ -205,7 +205,7 @@ start:
 	spin_unlock_bh(&rose_list_lock);
 
 	for (i = 0; i < cnt; i++) {
-		sk = array[cnt];
+		sk = array[i];
 		rose = rose_sk(sk);
 		lock_sock(sk);
 		spin_lock_bh(&rose_list_lock);
@@ -693,7 +693,7 @@ static int rose_release(struct socket *sock)
 	return 0;
 }
 
-static int rose_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
+static int rose_bind(struct socket *sock, struct sockaddr_unsized *uaddr, int addr_len)
 {
 	struct sock *sk = sock->sk;
 	struct rose_sock *rose = rose_sk(sk);
@@ -765,7 +765,8 @@ out_release:
 	return err;
 }
 
-static int rose_connect(struct socket *sock, struct sockaddr *uaddr, int addr_len, int flags)
+static int rose_connect(struct socket *sock, struct sockaddr_unsized *uaddr, int addr_len,
+			int flags)
 {
 	struct sock *sk = sock->sk;
 	struct rose_sock *rose = rose_sk(sk);
@@ -807,6 +808,11 @@ static int rose_connect(struct socket *sock, struct sockaddr *uaddr, int addr_le
 	if (sk->sk_state == TCP_ESTABLISHED) {
 		/* No reconnect on a seqpacket socket */
 		err = -EISCONN;
+		goto out_release;
+	}
+
+	if (sk->sk_state == TCP_SYN_SENT) {
+		err = -EALREADY;
 		goto out_release;
 	}
 
@@ -1478,7 +1484,7 @@ static int rose_info_show(struct seq_file *seq, void *v)
 			callsign = ax2asc(buf, &rose->source_call);
 
 		seq_printf(seq,
-			   "%-10s %-9s %-5s %3.3X %05d  %d  %d  %d  %d %3lu %3lu %3lu %3lu %3lu %3lu/%03lu %5d %5d %ld\n",
+			   "%-10s %-9s %-5s %3.3X %05d  %d  %d  %d  %d %3lu %3lu %3lu %3lu %3lu %3lu/%03lu %5d %5d %llu\n",
 			rose2asc(rsbuf, &rose->source_addr),
 			callsign,
 			devname,
@@ -1497,7 +1503,7 @@ static int rose_info_show(struct seq_file *seq, void *v)
 			rose->idle / (60 * HZ),
 			sk_wmem_alloc_get(s),
 			sk_rmem_alloc_get(s),
-			s->sk_socket ? SOCK_INODE(s->sk_socket)->i_ino : 0L);
+			s->sk_socket ? SOCK_INODE(s->sk_socket)->i_ino : (u64)0);
 	}
 
 	return 0;
@@ -1570,8 +1576,7 @@ static int __init rose_proto_init(void)
 
 	rose_callsign = null_ax25_address;
 
-	dev_rose = kcalloc(rose_ndevs, sizeof(struct net_device *),
-			   GFP_KERNEL);
+	dev_rose = kzalloc_objs(struct net_device *, rose_ndevs);
 	if (dev_rose == NULL) {
 		printk(KERN_ERR "ROSE: rose_proto_init - unable to allocate device structure\n");
 		rc = -ENOMEM;
